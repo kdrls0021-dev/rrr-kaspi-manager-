@@ -14,6 +14,102 @@ def db():
  c.execute('PRAGMA journal_mode=WAL')
  c.execute('CREATE TABLE IF NOT EXISTS tasks(id TEXT PRIMARY KEY, kind TEXT NOT NULL, payload TEXT NOT NULL, status TEXT NOT NULL, result TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)')
  c.execute('CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY AUTOINCREMENT,task_id TEXT,action TEXT NOT NULL,at TEXT NOT NULL)');c.commit();return c
+PANEL = r'''<!doctype html>
+<html lang="kk"><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RRR Brand · Kaspi Manager</title>
+<style>
+*{box-sizing:border-box}body{background:#f4f5f0;color:#182821;font:16px system-ui;margin:auto;max-width:650px;padding:24px 16px}
+h1{font-size:32px;margin:6px 0}small{color:#53685d}section{background:white;padding:18px;border:1px solid #d9e3dc;border-radius:14px;margin:18px 0}
+h2{font-size:20px;margin:0 0 12px}label{display:grid;gap:5px;margin:12px 0}input,textarea,button{font:inherit;border:1px solid #9aaea2;border-radius:8px;padding:10px;width:100%}button{background:#245b42;color:white;cursor:pointer;margin:5px 0}li{overflow-wrap:anywhere;margin:12px 0}
+</style>
+<small>RRR BRAND</small><h1>Kaspi Manager</h1>
+<p>Сынақ режимі. Карточкалар серверде сақталады.</p>
+<section><h2>Кіру</h2><form id="login">
+<label>Әкімші кілті<input id="key" type="password" required autocomplete="current-password"></label>
+<button>Кіру</button></form></section>
+<div id="workspace" hidden>
+<section><h2>Карточка дайындау</h2><form id="product">
+<label>Артикул<input name="sku" required maxlength="64"></label>
+<label>Атауы<input name="title" required maxlength="200"></label>
+<label>Фото сілтемесі<input name="image" type="url" maxlength="1000"></label>
+<label>Сипаттамасы<textarea name="description" maxlength="1500"></textarea></label>
+<button>Карточканы сақтау</button></form></section>
+<section><h2>Тапсырмалар</h2><ul id="tasks"></ul></section>
+</div><p id="message" role="status"></p>
+<script>
+const login = document.querySelector('#login');
+const product = document.querySelector('#product');
+const message = document.querySelector('#message');
+const workspace = document.querySelector('#workspace');
+let key = '';
+
+async function api(path, body) {
+    const options = { headers: { Authorization: 'Bearer ' + key } };
+    if (body) {
+        options.method = 'POST';
+        options.headers['Content-Type'] = 'application/json';
+        options.body = JSON.stringify(body);
+    }
+    const response = await fetch(path, options);
+    if (response.status === 401) {
+        workspace.hidden = true;
+        login.hidden = false;
+        key = '';
+        throw new Error('Әкімші кілтін тексеріңіз.');
+    }
+    if (!response.ok) throw new Error('Сервер сұрауды орындай алмады.');
+    return response.json();
+}
+
+async function refresh() {
+    const {tasks} = await api('/tasks');
+    const list = document.querySelector('#tasks');
+    list.replaceChildren();
+    for (const task of tasks) {
+        const row = document.createElement('li');
+        const p = task.payload;
+        row.textContent = [p.sku, p.title, task.kind, task.status].filter(Boolean).join(' · ');
+        list.append(row);
+    }
+    if (!tasks.length) {
+        const row = document.createElement('li');
+        row.textContent = 'Тапсырма әзірге жоқ.';
+        list.append(row);
+    }
+}
+
+login.addEventListener('submit', async event => {
+    event.preventDefault();
+    const input = document.querySelector('#key');
+    key = input.value;
+    try {
+        await refresh();
+        input.value = '';
+        login.hidden = true;
+        workspace.hidden = false;
+        message.textContent = '';
+    } catch (error) { message.textContent = error.message; }
+});
+
+product.addEventListener('submit', async event => {
+    event.preventDefault();
+    const button = product.querySelector('button');
+    button.disabled = true;
+    try {
+        const payload = Object.fromEntries(new FormData(product));
+        payload.sku = payload.sku.trim();
+        payload.title = payload.title.trim();
+        if (!payload.sku || !payload.title) throw new Error('Артикул мен атауын жазыңыз.');
+        await api('/tasks', {kind: 'prepare_card', payload});
+        product.reset();
+        message.textContent = 'Карточка тапсырмаларға қосылды.';
+        await refresh();
+    } catch (error) { message.textContent = error.message; }
+    finally { button.disabled = false; }
+});
+</script></html>'''
+
 class Handler(BaseHTTPRequestHandler):
  def send(self,code,obj):
   raw=json.dumps(obj,ensure_ascii=False).encode();self.send_response(code)
@@ -28,6 +124,15 @@ class Handler(BaseHTTPRequestHandler):
   return d
  def do_GET(self):
   path=urlparse(self.path).path
+  if path=='/':
+   raw=PANEL.encode()
+   self.send_response(200)
+   self.send_header('Content-Type','text/html; charset=utf-8')
+   self.send_header('Cache-Control','no-store')
+   self.send_header('Content-Length',str(len(raw)))
+   self.end_headers()
+   self.wfile.write(raw)
+   return
   if path=='/health':return self.send(200,{'status':'ok','mode':'offline-demo','kaspi_connected':False})
   if not self.auth():return self.send(401,{'error':'unauthorized'})
   c=db()
