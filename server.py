@@ -73,13 +73,13 @@ PANEL = r'''<!doctype html>
 <style>
 *{box-sizing:border-box}body{background:#f4f5f0;color:#182821;font:16px system-ui;margin:auto;max-width:650px;padding:24px 16px}
 h1{font-size:32px;margin:6px 0}small{color:#53685d}section{background:white;padding:18px;border:1px solid #d9e3dc;border-radius:14px;margin:18px 0}
-h2{font-size:20px;margin:0 0 12px}label{display:grid;gap:5px;margin:12px 0}input,textarea,button{font:inherit;border:1px solid #9aaea2;border-radius:8px;padding:10px;width:100%}button{background:#245b42;color:white;cursor:pointer;margin:5px 0}li{overflow-wrap:anywhere;margin:12px 0}
+h2{font-size:20px;margin:0 0 12px}label{display:grid;gap:5px;margin:12px 0}input,textarea,button{font:inherit;border:1px solid #9aaea2;border-radius:8px;padding:10px;width:100%}button{background:#245b42;color:white;cursor:pointer;margin:5px 0}[hidden]{display:none!important}#login-message{color:#9b2534;font-weight:600;overflow-wrap:anywhere}li{overflow-wrap:anywhere;margin:12px 0}
 </style>
 <small>RRR BRAND</small><h1>Kaspi Manager</h1>
 <p>Карточка дайындау және Kaspi-ге жіберу</p>
 <section><h2>Кіру</h2><form id="login">
 <label>Әкімші кілті<input id="key" type="password" required autocomplete="current-password"></label>
-<button>Кіру</button></form></section>
+<button type="submit" id="login-button">Кіру</button><p id="login-message" role="alert" aria-live="polite"></p></form></section>
 <div id="workspace" hidden>
 <section><h2>Карточка дайындау</h2><form id="product">
 <label>Артикул<input name="sku" required maxlength="64"></label>
@@ -162,14 +162,21 @@ async function refresh() {
 login.addEventListener('submit', async event => {
     event.preventDefault();
     const input = document.querySelector('#key');
-    key = input.value;
+    key = input.value.trim();
+    const loginMessage = document.querySelector('#login-message');
+    const loginButton = document.querySelector('#login-button');
+    loginMessage.textContent = 'Кілт тексеріліп жатыр…';
+    loginButton.disabled = true;
     try {
         await refresh();
         input.value = '';
         login.hidden = true;
         workspace.hidden = false;
+        loginMessage.textContent = '';
         message.textContent = '';
-    } catch (error) { message.textContent = error.message; }
+    } catch (error) {
+        loginMessage.textContent = error.message || 'Қосылу қатесі. Қайта көріңіз.';
+    } finally { loginButton.disabled = false; }
 });
 
 product.addEventListener('submit', async event => {
